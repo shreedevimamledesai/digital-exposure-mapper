@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Digital Footprint Exposure Mapper</title>
+  <!-- Import Vis.js Graph Engine -->
+  <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
+    h1 { color: #38bdf8; text-align: center; margin-bottom: 5px; }
+    p.subtitle { text-align: center; color: #94a3b8; margin-bottom: 25px; }
+    .container { max-width: 850px; margin: 0 auto; }
+    .search-box { display: flex; gap: 10px; margin-bottom: 20px; }
+    input { flex: 1; padding: 14px; font-size: 16px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #fff; }
+    button { padding: 14px 28px; background: #0284c7; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; }
+    button:hover { background: #0369a1; }
+    #mynetwork { width: 100%; height: 380px; background: #1e293b; border-radius: 8px; border: 1px solid #334155; margin-bottom: 20px; }
+    .remediation-panel { background: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #f59e0b; }
+    ul { padding-left: 20px; margin: 0; }
+    li { margin-bottom: 8px; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Digital Exposure Mapper</h1>
+    <p class="subtitle">Visualize your public OSINT footprint before attackers do</p>
+    
+    <div class="search-box">
+      <input type="text" id="targetInput" placeholder="Enter verified email or username...">
+      <button onclick="runScan()">Scan Exposure</button>
+    </div>
+
+    <!-- Graph Container -->
+    <div id="mynetwork"></div>
+
+    <!-- Action List -->
+    <div class="remediation-panel">
+      <h3>Priority Action Items</h3>
+      <ul id="actionList">
+        <li>Enter an identity above and click scan to build the exposure map.</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    async function runScan() {
+      const target = document.getElementById('targetInput').value;
+      if (!target) return alert('Please enter an identity!');
+
+      const backendUrl = `http://127.0.0.1:8000/scan?identifier=${encodeURIComponent(target)}`;
+
+      try {
+        const res = await fetch(backendUrl);
+        const data = await res.json();
+
+        // Render Graph
+        const container = document.getElementById('mynetwork');
+        const graphData = {
+          nodes: new vis.DataSet(data.nodes),
+          edges: new vis.DataSet(data.edges)
+        };
+        const options = {
+          nodes: { shape: 'dot', size: 22, font: { color: '#ffffff' } },
+          groups: {
+            user: { color: { background: '#0284c7' } },
+            breach: { color: { background: '#ef4444' } }
+          }
+        };
+        new vis.Network(container, graphData, options);
+
+        // Render Checklist
+        const list = document.getElementById('actionList');
+        list.innerHTML = data.remediation.map(step => `<li>${step}</li>`).join('');
+      } catch (err) {
+        alert('Could not connect to backend server. Make sure uvicorn is running!');
+      }
+    }
+  </script>
+</body>
+</html>
