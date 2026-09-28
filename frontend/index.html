@@ -65,7 +65,7 @@
       const target = document.getElementById('targetInput').value;
       if (!target) return alert('Please enter an identity!');
 
-      const backendUrl = `http://127.0.0.1:8000/scan?identifier=${encodeURIComponent(target)}`;
+     const backendUrl = `https://digital-exposure-mapper.onrender.com/scan?identifier=${encodeURIComponent(target)}`;
 
       try {
         const res = await fetch(backendUrl);
