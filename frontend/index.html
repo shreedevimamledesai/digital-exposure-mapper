@@ -3,21 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <title>Digital Footprint Exposure Mapper</title>
-  <!-- Import Vis.js Graph Engine -->
+  <!-- Vis.js Graph Engine -->
   <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }
     h1 { color: #38bdf8; text-align: center; margin-bottom: 5px; }
     p.subtitle { text-align: center; color: #94a3b8; margin-bottom: 25px; }
-    .container { max-width: 850px; margin: 0 auto; }
+    .container { max-width: 900px; margin: 0 auto; }
+    
     .search-box { display: flex; gap: 10px; margin-bottom: 20px; }
     input { flex: 1; padding: 14px; font-size: 16px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #fff; }
     button { padding: 14px 28px; background: #0284c7; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; }
     button:hover { background: #0369a1; }
-    #mynetwork { width: 100%; height: 380px; background: #1e293b; border-radius: 8px; border: 1px solid #334155; margin-bottom: 20px; }
+
+    /* Legend Bar */
+    .legend { display: flex; justify-content: center; gap: 20px; margin-bottom: 15px; font-size: 14px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+    .dot-user { background: #0284c7; }
+    .dot-breach { background: #ef4444; }
+    .dot-profile { background: #10b981; }
+
+    #mynetwork { width: 100%; height: 420px; background: #1e293b; border-radius: 8px; border: 1px solid #334155; margin-bottom: 20px; }
+    
     .remediation-panel { background: #1e293b; padding: 20px; border-radius: 8px; border-left: 5px solid #f59e0b; }
     ul { padding-left: 20px; margin: 0; }
-    li { margin-bottom: 8px; color: #cbd5e1; }
+    li { margin-bottom: 10px; color: #cbd5e1; font-size: 15px; }
   </style>
 </head>
 <body>
@@ -26,14 +37,21 @@
     <p class="subtitle">Visualize your public OSINT footprint before attackers do</p>
     
     <div class="search-box">
-      <input type="text" id="targetInput" placeholder="Enter verified email or username...">
+      <input type="text" id="targetInput" placeholder="Enter email or username (e.g., test@example.com)...">
       <button onclick="runScan()">Scan Exposure</button>
     </div>
 
-    <!-- Graph Container -->
+    <!-- Node Color Legend -->
+    <div class="legend">
+      <div class="legend-item"><span class="dot dot-user"></span> Target Identity</div>
+      <div class="legend-item"><span class="dot dot-breach"></span> Data Breach (Risk)</div>
+      <div class="legend-item"><span class="dot dot-profile"></span> Social Profile</div>
+    </div>
+
+    <!-- Interactive Graph Display -->
     <div id="mynetwork"></div>
 
-    <!-- Action List -->
+    <!-- Priority Action Items -->
     <div class="remediation-panel">
       <h3>Priority Action Items</h3>
       <ul id="actionList">
@@ -53,24 +71,36 @@
         const res = await fetch(backendUrl);
         const data = await res.json();
 
-        // Render Graph
+        // Render Colorful Node Graph
         const container = document.getElementById('mynetwork');
         const graphData = {
           nodes: new vis.DataSet(data.nodes),
           edges: new vis.DataSet(data.edges)
         };
+        
         const options = {
-          nodes: { shape: 'dot', size: 22, font: { color: '#ffffff' } },
+          nodes: { 
+            shape: 'dot', 
+            size: 22, 
+            font: { color: '#ffffff', size: 14 } 
+          },
           groups: {
-            user: { color: { background: '#0284c7' } },
-            breach: { color: { background: '#ef4444' } }
+            user: { color: { background: '#0284c7', border: '#38bdf8' } },
+            breach: { color: { background: '#ef4444', border: '#f87171' } },
+            profile: { color: { background: '#10b981', border: '#34d399' } }
+          },
+          physics: {
+            solver: 'forceAtlas2Based',
+            forceAtlas2Based: { springLength: 90 }
           }
         };
+        
         new vis.Network(container, graphData, options);
 
-        // Render Checklist
+        // Render Dynamic Remediation List
         const list = document.getElementById('actionList');
         list.innerHTML = data.remediation.map(step => `<li>${step}</li>`).join('');
+
       } catch (err) {
         alert('Could not connect to backend server. Make sure uvicorn is running!');
       }
