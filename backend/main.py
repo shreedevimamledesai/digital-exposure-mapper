@@ -68,19 +68,33 @@ def scan_identity(identifier: str):
         nodes.append({"id": f"breach_{i}", "label": f"Exposed via: {name}", "group": "breach"})
         edges.append({"from": "target", "to": f"breach_{i}"})
 
-    # --- 2. POSSIBLE USERNAME MATCHES ---
-    headers = {"User-Agent": "Mozilla/5.0"}
-    checks = {
-        "GitHub": f"https://api.github.com/users/{clean_username}",
-        "Reddit": f"https://www.reddit.com/user/{clean_username}/about.json",
-    }
-    for platform, url in checks.items():
-        try:
-            r = requests.get(url, headers=headers, timeout=4)
-            if r.status_code == 200:
-                found_profiles.append(platform)
-        except Exception:
-            pass
+    # --- 2. POSSIBLE USERNAME MATCHES (Strictly Validated) ---
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    
+    # GitHub check (Ensures user exists and contains valid login data)
+    try:
+        gh_url = f"https://api.github.com/users/{clean_username}"
+        r = requests.get(gh_url, headers=headers, timeout=4)
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, dict) and "login" in data:
+                found_profiles.append("GitHub")
+    except Exception:
+        pass
+
+    # Reddit check (Reddit returns status 200 even for non-existent users, 
+    # so we must verify the JSON payload does not contain an error / missing user structure)
+    try:
+        reddit_url = f"https://www.reddit.com/user/{clean_username}/about.json"
+        r = requests.get(reddit_url, headers=headers, timeout=4)
+        if r.status_code == 200:
+            data = r.json()
+            # Valid Reddit profiles contain 'data' with a unique identifier like 'name' or 'id' 
+            # while non-existent ones return an error object (e.g., {"error": 404, ...})
+            if isinstance(data, dict) and "data" in data and "id" in data["data"]:
+                found_profiles.append("Reddit")
+    except Exception:
+        pass
 
     for i, p in enumerate(found_profiles):
         nodes.append({"id": f"profile_{i}", "label": f"Possible {p} match", "group": "profile"})
