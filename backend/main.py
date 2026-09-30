@@ -1,6 +1,8 @@
+import re
+import dns.resolver
+import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import requests
 
 app = FastAPI()
 
@@ -11,88 +13,92 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+
+
+def domain_has_mail_server(domain):
+    try:
+        dns.resolver.resolve(domain, "MX", lifetime=4)
+        return True
+    except Exception:
+        return False
+
+
 @app.get("/")
 def home():
     return {"status": "OSINT Exposure API is running!"}
 
+
 @app.get("/scan")
 def scan_identity(identifier: str):
-    # Base node (Target User)
+    identifier = identifier.strip()
+
+    # --- VALIDATION ---
+    if not EMAIL_RE.match(identifier):
+        return {"error": "Please enter a valid email address."}
+
+    domain = identifier.split("@")[1]
+    if not domain_has_mail_server(domain):
+        return {"error": f"The domain '{domain}' can't receive email. Please check the address."}
+
     nodes = [{"id": "target", "label": identifier, "group": "user"}]
     edges = []
-    
     found_breaches = []
     found_profiles = []
 
-    # Clean username/prefix if email is entered
     clean_username = identifier.split("@")[0]
 
-    # --- 1. BREACH CHECK (XposedOrNot API) ---
-    breach_url = f"https://api.xposedornot.com/v1/check-email/{identifier}"
+    # --- 1. BREACH CHECK ---
     try:
-        res = requests.get(breach_url, timeout=4)
+        res = requests.get(
+            f"https://api.xposedornot.com/v1/check-email/{identifier}",
+            timeout=6,
+        )
         if res.status_code == 200:
             data = res.json()
-            if "breaches" in data and isinstance(data["breaches"], list) and len(data["breaches"]) > 0:
-                found_breaches = data["breaches"][0]
-            elif "Exposed Breaches" in data and isinstance(data["Exposed Breaches"], list) and len(data["Exposed Breaches"]) > 0:
-                found_breaches = data["Exposed Breaches"][0]
+            breaches = data.get("breaches") or data.get("Exposed Breaches") or []
+            if breaches and isinstance(breaches[0], list):
+                found_breaches = breaches[0]
+            elif isinstance(breaches, list):
+                found_breaches = breaches
     except Exception:
         pass
 
-    # Backup Mock Breaches for Demo Safety
-    if not found_breaches and ("adobe" in identifier.lower() or "test" in identifier.lower()):
-        found_breaches = ["Adobe (2013)", "Canva (2019)", "LinkedIn (2021)"]
+    for i, name in enumerate(found_breaches[:5]):
+        nodes.append({"id": f"breach_{i}", "label": f"Exposed via: {name}", "group": "breach"})
+        edges.append({"from": "target", "to": f"breach_{i}"})
 
-    # Add Breach Nodes (RED)
-    for i, breach_name in enumerate(found_breaches[:5]):
-        b_id = f"breach_{i}"
-        nodes.append({"id": b_id, "label": f"Breach: {breach_name}", "group": "breach"})
-        edges.append({"from": "target", "to": b_id})
-
-    # --- 2. SOCIAL USERNAME ENUMERATION ---
-    platforms = {
-        "GitHub": f"https://github.com/{clean_username}",
-        "Reddit": f"https://www.reddit.com/user/{clean_username}",
-        "Twitter": f"https://x.com/{clean_username}"
+    # --- 2. POSSIBLE USERNAME MATCHES ---
+    headers = {"User-Agent": "Mozilla/5.0"}
+    checks = {
+        "GitHub": f"https://api.github.com/users/{clean_username}",
+        "Reddit": f"https://www.reddit.com/user/{clean_username}/about.json",
     }
-
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-
-    for platform_name, url in platforms.items():
+    for platform, url in checks.items():
         try:
-            # Check if username page exists (HTTP 200)
-            check_res = requests.head(url, headers=headers, timeout=3, allow_redirects=True)
-            if check_res.status_code == 200:
-                found_profiles.append((platform_name, url))
+            r = requests.get(url, headers=headers, timeout=4)
+            if r.status_code == 200:
+                found_profiles.append(platform)
         except Exception:
-             pass
+            pass
 
-    # Backup Mock Social Profiles for Demo Safety
-    if not found_profiles:
-        found_profiles = [("GitHub", f"https://github.com/{clean_username}"), ("Reddit", f"https://reddit.com/user/{clean_username}")]
+    for i, p in enumerate(found_profiles):
+        nodes.append({"id": f"profile_{i}", "label": f"Possible {p} match", "group": "profile"})
+        edges.append({"from": "target", "to": f"profile_{i}"})
 
-    # Add Social Nodes (GREEN/BLUE)
-    for i, (p_name, p_url) in enumerate(found_profiles):
-        p_id = f"profile_{i}"
-        nodes.append({"id": p_id, "label": f"Profile: {p_name}", "group": "profile"})
-        edges.append({"from": "target", "to": p_id})
-
-    # --- 3. DYNAMIC REMEDIATION STEPS ---
+    # --- 3. REMEDIATION ---
     remediation = []
     if found_breaches:
-        remediation.append(f"⚠️ HIGH RISK: Found exposed credentials in {len(found_breaches)} breach database(s). Change passwords immediately.")
+        remediation.append(f"⚠️ Found in {len(found_breaches)} known breach(es). Change those passwords now.")
     if found_profiles:
-        remediation.append(f"🔍 FOOTPRINT EXPOSED: Active accounts found on {len(found_profiles)} public platform(s) using identifier '{clean_username}'.")
-    
-    remediation.append("🛡️ ACTION REQUIRED: Enable Multi-Factor Authentication (2FA) and remove unneeded public social accounts.")
+        remediation.append(f"🔍 Accounts with username '{clean_username}' exist on: {', '.join(found_profiles)}. Verify they're yours.")
+    if not found_breaches and not found_profiles:
+        remediation.append("✅ No known breaches or matching public profiles found.")
+    remediation.append("🛡️ Enable 2FA on important accounts and use unique passwords.")
 
     return {
-        "nodes": nodes, 
-        "edges": edges, 
+        "nodes": nodes,
+        "edges": edges,
         "remediation": remediation,
-        "summary": {
-            "breaches_count": len(found_breaches),
-            "profiles_count": len(found_profiles)
-        }
+        "summary": {"breaches_count": len(found_breaches), "profiles_count": len(found_profiles)},
     }
