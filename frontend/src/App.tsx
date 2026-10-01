@@ -8,10 +8,7 @@ import {
   RefreshCw, 
   X, 
   Server,
-  Lock,
-  Database,
-  Globe,
-  UserCheck
+  Lock
 } from "lucide-react";
 
 interface NodeData {
@@ -45,7 +42,7 @@ export default function App() {
 
   const BACKEND_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-  // Graph Nodes (Populated post-scan)
+  // Graph Nodes
   const [nodes, setNodes] = useState<NodeData[]>([]);
 
   // Remediation Tasks
@@ -60,7 +57,6 @@ export default function App() {
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Email Validation Check
     if (!targetInput.trim()) {
       alert("Please enter an email address.");
       return;
@@ -79,7 +75,7 @@ export default function App() {
         body: JSON.stringify({ identity: targetInput }),
       });
     } catch (err) {
-      console.log("Scan request dispatched to backend:", BACKEND_URL);
+      console.log("Scan request dispatched:", BACKEND_URL);
     } finally {
       setLoading(false);
       setShowOtpModal(true);
@@ -95,36 +91,6 @@ export default function App() {
     if (value && index < 5) {
       const nextInput = document.getElementById(`otp-${index + 1}`);
       nextInput?.focus();
-    }
-  };
-
-  const verifyOtp = async () => {
-    const fullCode = otpCode.join("");
-    if (fullCode.length !== 6) {
-      alert("Please enter the complete 6-digit OTP code.");
-      return;
-    }
-
-    setVerifyingOtp(true);
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/verify-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identity: targetInput, otp: fullCode }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.nodes) setNodes(data.nodes);
-        if (data.actions) setActions(data.actions);
-      } else {
-        generateDefaultScanResults();
-      }
-    } catch (err) {
-      generateDefaultScanResults();
-    } finally {
-      setVerifyingOtp(false);
-      setShowOtpModal(false);
-      setHasScanned(true);
     }
   };
 
@@ -197,6 +163,36 @@ export default function App() {
       { id: "a2", title: "Enable Two-Factor Authentication (2FA)", description: "Secure primary email and secondary accounts using an authenticator app.", completed: false },
       { id: "a3", title: "Remove Public Personal Data", description: "Request data removal from public people-search and scraping archives.", completed: false },
     ]);
+  };
+
+  const verifyOtp = async () => {
+    const fullCode = otpCode.join("");
+    if (fullCode.length !== 6) {
+      alert("Please enter the complete 6-digit OTP code.");
+      return;
+    }
+
+    setVerifyingOtp(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identity: targetInput, otp: fullCode }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.nodes) setNodes(data.nodes);
+        if (data.actions) setActions(data.actions);
+      } else {
+        generateDefaultScanResults();
+      }
+    } catch (err) {
+      generateDefaultScanResults();
+    } finally {
+      setVerifyingOtp(false);
+      setShowOtpModal(false);
+      setHasScanned(true);
+    }
   };
 
   const toggleAction = (id: string) => {
